@@ -8,6 +8,7 @@ import envConfig from 'src/shared/config'
 import { TypeOfVerificationCode } from 'src/shared/constants/auth.constant'
 import { generateOTP, isRecordNotFoundPrismaError, isUniqueConstraintPrismaError } from 'src/shared/helpers'
 import { SharedUserRepository } from 'src/shared/repositories/shared-user.repo'
+import { EmailService } from 'src/shared/services/email.service'
 import { HashingService } from 'src/shared/services/hashing.service'
 import { PrismaService } from 'src/shared/services/prisma.service'
 import { TokenService } from 'src/shared/services/token.service'
@@ -20,7 +21,8 @@ export class AuthService {
     private readonly tokenService: TokenService,
     private readonly rolesService: RolesService,
     private readonly authRepository: AuthRepository,
-    private readonly sharedUserRepository: SharedUserRepository
+    private readonly sharedUserRepository: SharedUserRepository,
+    private readonly emailService: EmailService
   ) {}
   async register(body: RegisterBodyType) {
     try {
@@ -92,6 +94,16 @@ export class AuthService {
       expiresAt: addMilliseconds(new Date(), ms(envConfig.OTP_EXPIRES_IN as StringValue))
     })
 
+    const { error } = await this.emailService.sendOTP({ email: body.email, code })
+
+    if (error) {
+      throw new UnprocessableEntityException([
+        {
+          path: 'code',
+          message: 'Send OTP failed'
+        }
+      ])
+    }
     return verificationCode
   }
 
