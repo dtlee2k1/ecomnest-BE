@@ -1,7 +1,7 @@
 import { Injectable, UnauthorizedException, UnprocessableEntityException } from '@nestjs/common'
 import { addMilliseconds } from 'date-fns'
 import ms, { StringValue } from 'ms'
-import { RegisterBodyType, SendOTPBodyType } from 'src/routes/auth/auth.model'
+import { LoginBodyType, RegisterBodyType, SendOTPBodyType } from 'src/routes/auth/auth.model'
 import { AuthRepository } from 'src/routes/auth/auth.repo'
 import { RolesService } from 'src/routes/auth/roles.service'
 import envConfig from 'src/shared/config'
@@ -107,18 +107,19 @@ export class AuthService {
     return verificationCode
   }
 
-  async login(body: any) {
-    const user = await this.prismaService.user.findUnique({
-      where: {
-        email: body.email
-      }
-    })
+  async login(data: LoginBodyType & { userAgent: string; ip: string }) {
+    const user = await this.authRepository.findUniqueUserIncludeRole({ email: data.email })
 
     if (!user) {
-      throw new UnauthorizedException('Account is not exist')
+      throw new UnprocessableEntityException([
+        {
+          field: 'email',
+          error: 'Email is not exist'
+        }
+      ])
     }
 
-    const isPasswordMatch = await this.hashingService.comparePassword(body.password, user.password)
+    const isPasswordMatch = await this.hashingService.comparePassword(data.password, user.password)
     if (!isPasswordMatch) {
       throw new UnprocessableEntityException([
         {
@@ -127,22 +128,31 @@ export class AuthService {
         }
       ])
     }
-    const tokens = await this.generateTokens({ userId: user.id })
+
+    const device = await this.authRepository.createDevice({ userId: user.id, userAgent: data.userAgent, ip: data.ip })
+
+    const tokens = await this.generateTokens({
+      userId: user.id,
+      deviceId: device.id,
+      roleId: user.roleId,
+      roleName: user.role.name
+    })
     return tokens
   }
 
-  async generateTokens(payload: { userId: number }) {
+  async generateTokens(payload: { userId: number; deviceId: number; roleId: number; roleName: string }) {
     const [accessToken, refreshToken] = await Promise.all([
       this.tokenService.signAccessToken(payload),
-      this.tokenService.signRefreshToken(payload)
+      this.tokenService.signRefreshToken({
+        userId: payload.userId
+      })
     ])
     const decodedRefreshToken = await this.tokenService.verifyRefreshToken(refreshToken)
-    await this.prismaService.refreshToken.create({
-      data: {
-        token: refreshToken,
-        userId: payload.userId,
-        expiresAt: new Date(decodedRefreshToken.exp * 1000)
-      }
+    await this.authRepository.createRefreshToken({
+      token: refreshToken,
+      userId: payload.userId,
+      deviceId: payload.deviceId,
+      expiresAt: new Date(decodedRefreshToken.exp * 1000)
     })
     return { accessToken, refreshToken }
   }
@@ -160,7 +170,7 @@ export class AuthService {
           token: refreshToken
         }
       })
-      return await this.generateTokens({ userId })
+      return await this.generateTokens({ userId, deviceId: 1, roleId: 1, roleName: 'admin' })
     } catch (error) {
       if (isRecordNotFoundPrismaError(error)) {
         throw new UnauthorizedException('Refresh token has been revoked')
