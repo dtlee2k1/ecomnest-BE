@@ -1,7 +1,7 @@
-import { Injectable, UnauthorizedException, UnprocessableEntityException } from '@nestjs/common'
+import { HttpException, Injectable, UnauthorizedException, UnprocessableEntityException } from '@nestjs/common'
 import { addMilliseconds } from 'date-fns'
 import ms, { StringValue } from 'ms'
-import { LoginBodyType, RegisterBodyType, SendOTPBodyType } from 'src/routes/auth/auth.model'
+import { LoginBodyType, RefreshTokenBodyType, RegisterBodyType, SendOTPBodyType } from 'src/routes/auth/auth.model'
 import { AuthRepository } from 'src/routes/auth/auth.repo'
 import { RolesService } from 'src/routes/auth/roles.service'
 import envConfig from 'src/shared/config'
@@ -157,23 +157,44 @@ export class AuthService {
     return { accessToken, refreshToken }
   }
 
-  async refreshToken(refreshToken: string) {
+  async refreshToken({ refreshToken, userAgent, ip }: RefreshTokenBodyType & { userAgent: string; ip: string }) {
     try {
       const { userId } = await this.tokenService.verifyRefreshToken(refreshToken)
-      await this.prismaService.refreshToken.findUniqueOrThrow({
-        where: {
-          token: refreshToken
-        }
+
+      const refreshTokenInDb = await this.authRepository.findUniqueRefreshTokenIncludeUserRoleDevice({
+        token: refreshToken
       })
-      await this.prismaService.refreshToken.delete({
-        where: {
-          token: refreshToken
-        }
-      })
-      return await this.generateTokens({ userId, deviceId: 1, roleId: 1, roleName: 'admin' })
-    } catch (error) {
-      if (isRecordNotFoundPrismaError(error)) {
+
+      if (!refreshTokenInDb) {
         throw new UnauthorizedException('Refresh token has been revoked')
+      }
+
+      const {
+        deviceId,
+        user: {
+          roleId,
+          role: { name: roleName }
+        }
+      } = refreshTokenInDb
+
+      const $updateDevice = this.authRepository.updateDevice(deviceId, {
+        userAgent,
+        ip
+      })
+
+      const $deleteRefreshToken = this.prismaService.refreshToken.delete({
+        where: {
+          token: refreshToken
+        }
+      })
+
+      const $tokens = this.generateTokens({ userId, deviceId, roleId, roleName })
+
+      const [, , tokens] = await Promise.all([$updateDevice, $deleteRefreshToken, $tokens])
+      return tokens
+    } catch (error) {
+      if (error instanceof HttpException) {
+        throw error
       }
       throw new UnauthorizedException()
     }
