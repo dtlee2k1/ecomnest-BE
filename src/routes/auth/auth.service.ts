@@ -85,7 +85,7 @@ export class AuthService {
     }
 
     const code = generateOTP()
-    const verificationCode = await this.authRepository.createVerificationCode({
+    await this.authRepository.createVerificationCode({
       email: body.email,
       code,
       type: body.type,
@@ -102,7 +102,9 @@ export class AuthService {
         }
       ])
     }
-    return verificationCode
+    return {
+      message: 'Send OTP successfully. Please check your email'
+    }
   }
 
   async login(data: LoginBodyType & { userAgent: string; ip: string }) {
