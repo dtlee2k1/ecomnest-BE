@@ -10,14 +10,12 @@ import { generateOTP, isRecordNotFoundPrismaError, isUniqueConstraintPrismaError
 import { SharedUserRepository } from 'src/shared/repositories/shared-user.repo'
 import { EmailService } from 'src/shared/services/email.service'
 import { HashingService } from 'src/shared/services/hashing.service'
-import { PrismaService } from 'src/shared/services/prisma.service'
 import { TokenService } from 'src/shared/services/token.service'
 
 @Injectable()
 export class AuthService {
   constructor(
     private readonly hashingService: HashingService,
-    private readonly prismaService: PrismaService,
     private readonly tokenService: TokenService,
     private readonly rolesService: RolesService,
     private readonly authRepository: AuthRepository,
@@ -182,10 +180,8 @@ export class AuthService {
         ip
       })
 
-      const $deleteRefreshToken = this.prismaService.refreshToken.delete({
-        where: {
-          token: refreshToken
-        }
+      const $deleteRefreshToken = this.authRepository.deleteRefreshToken({
+        token: refreshToken
       })
 
       const $tokens = this.generateTokens({ userId, deviceId, roleId, roleName })
@@ -196,6 +192,7 @@ export class AuthService {
       if (error instanceof HttpException) {
         throw error
       }
+
       throw new UnauthorizedException()
     }
   }
@@ -203,11 +200,13 @@ export class AuthService {
   async logout(refreshToken: string) {
     try {
       await this.tokenService.verifyRefreshToken(refreshToken)
-      await this.prismaService.refreshToken.delete({
-        where: {
-          token: refreshToken
-        }
+
+      const deletedRefreshToken = await this.authRepository.deleteRefreshToken({
+        token: refreshToken
       })
+
+      await this.authRepository.updateDevice(deletedRefreshToken.deviceId, { isActive: false })
+
       return { message: 'Logout successfully' }
     } catch (error) {
       if (isRecordNotFoundPrismaError(error)) {
