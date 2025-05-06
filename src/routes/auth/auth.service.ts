@@ -1,8 +1,18 @@
-import { HttpException, Injectable, UnauthorizedException, UnprocessableEntityException } from '@nestjs/common'
+import { HttpException, Injectable } from '@nestjs/common'
 import { addMilliseconds } from 'date-fns'
 import ms, { StringValue } from 'ms'
 import { LoginBodyType, RefreshTokenBodyType, RegisterBodyType, SendOTPBodyType } from 'src/routes/auth/auth.model'
 import { AuthRepository } from 'src/routes/auth/auth.repo'
+import {
+  EmailAlreadyExistsException,
+  EmailNotFoundException,
+  FailedToSendOTPException,
+  InvalidOTPException,
+  InvalidPasswordException,
+  OTPExpiredException,
+  RefreshTokenAlreadyUsedException,
+  UnauthorizedAccessException
+} from 'src/routes/auth/error.model'
 import { RolesService } from 'src/routes/auth/roles.service'
 import envConfig from 'src/shared/config'
 import { TypeOfVerificationCode } from 'src/shared/constants/auth.constant'
@@ -31,21 +41,11 @@ export class AuthService {
       })
 
       if (!verificationCode) {
-        throw new UnprocessableEntityException([
-          {
-            path: 'code',
-            message: 'OTP code is invalid'
-          }
-        ])
+        throw InvalidOTPException
       }
 
       if (verificationCode.expiresAt < new Date()) {
-        throw new UnprocessableEntityException([
-          {
-            path: 'code',
-            message: 'OTP code is expired'
-          }
-        ])
+        throw OTPExpiredException
       }
 
       const clientRoleId = await this.rolesService.getClientRoleId()
@@ -61,12 +61,7 @@ export class AuthService {
       return await this.authRepository.createUser(data)
     } catch (error) {
       if (isUniqueConstraintPrismaError(error)) {
-        throw new UnprocessableEntityException([
-          {
-            path: 'email',
-            message: 'Email is already exist'
-          }
-        ])
+        throw EmailAlreadyExistsException
       }
       throw error
     }
@@ -76,12 +71,7 @@ export class AuthService {
     const user = await this.sharedUserRepository.findUnique({ email: body.email })
 
     if (user) {
-      throw new UnprocessableEntityException([
-        {
-          path: 'email',
-          message: 'Email is already exist'
-        }
-      ])
+      throw EmailAlreadyExistsException
     }
 
     const code = generateOTP()
@@ -95,12 +85,7 @@ export class AuthService {
     const { error } = await this.emailService.sendOTP({ email: body.email, code })
 
     if (error) {
-      throw new UnprocessableEntityException([
-        {
-          path: 'code',
-          message: 'Send OTP failed'
-        }
-      ])
+      throw FailedToSendOTPException
     }
     return {
       message: 'Send OTP successfully. Please check your email'
@@ -111,22 +96,12 @@ export class AuthService {
     const user = await this.authRepository.findUniqueUserIncludeRole({ email: data.email })
 
     if (!user) {
-      throw new UnprocessableEntityException([
-        {
-          field: 'email',
-          error: 'Email is not exist'
-        }
-      ])
+      throw EmailNotFoundException
     }
 
     const isPasswordMatch = await this.hashingService.comparePassword(data.password, user.password)
     if (!isPasswordMatch) {
-      throw new UnprocessableEntityException([
-        {
-          field: 'password',
-          error: 'Password is incorrect'
-        }
-      ])
+      throw InvalidPasswordException
     }
 
     const device = await this.authRepository.createDevice({ userId: user.id, userAgent: data.userAgent, ip: data.ip })
@@ -166,7 +141,7 @@ export class AuthService {
       })
 
       if (!refreshTokenInDb) {
-        throw new UnauthorizedException('Refresh token has been revoked')
+        throw RefreshTokenAlreadyUsedException
       }
 
       const {
@@ -195,7 +170,7 @@ export class AuthService {
         throw error
       }
 
-      throw new UnauthorizedException()
+      throw UnauthorizedAccessException
     }
   }
 
@@ -212,9 +187,9 @@ export class AuthService {
       return { message: 'Logout successfully' }
     } catch (error) {
       if (isRecordNotFoundPrismaError(error)) {
-        throw new UnauthorizedException('Refresh token has been revoked')
+        throw RefreshTokenAlreadyUsedException
       }
-      throw new UnauthorizedException()
+      throw UnauthorizedAccessException
     }
   }
 }

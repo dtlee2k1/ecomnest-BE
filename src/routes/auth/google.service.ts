@@ -4,6 +4,7 @@ import { google } from 'googleapis'
 import { GoogleAuthStateType } from 'src/routes/auth/auth.model'
 import { AuthRepository } from 'src/routes/auth/auth.repo'
 import { AuthService } from 'src/routes/auth/auth.service'
+import { GoogleUserInfoError } from 'src/routes/auth/error.model'
 import { RolesService } from 'src/routes/auth/roles.service'
 import envConfig from 'src/shared/config'
 import { HashingService } from 'src/shared/services/hashing.service'
@@ -67,7 +68,7 @@ export class GoogleService {
       })
       const { data } = await oauth2.userinfo.get()
       if (!data.email) {
-        throw new Error('Cannot get user info from google')
+        throw GoogleUserInfoError
       }
 
       let user = await this.authRepository.findUniqueUserIncludeRole({ email: data.email })
@@ -97,7 +98,7 @@ export class GoogleService {
       return authTokens
     } catch (error) {
       console.error('Error in googleCallback: ', error)
-      throw new Error('Google login failed')
+      throw error
     }
   }
 }
