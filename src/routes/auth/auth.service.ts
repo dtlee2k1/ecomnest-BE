@@ -1,7 +1,13 @@
 import { HttpException, Injectable } from '@nestjs/common'
 import { addMilliseconds } from 'date-fns'
 import ms, { StringValue } from 'ms'
-import { LoginBodyType, RefreshTokenBodyType, RegisterBodyType, SendOTPBodyType } from 'src/routes/auth/auth.model'
+import {
+  ForgotPasswordBodyType,
+  LoginBodyType,
+  RefreshTokenBodyType,
+  RegisterBodyType,
+  SendOTPBodyType
+} from 'src/routes/auth/auth.model'
 import { AuthRepository } from 'src/routes/auth/auth.repo'
 import {
   EmailAlreadyExistsException,
@@ -15,7 +21,7 @@ import {
 } from 'src/routes/auth/error.model'
 import { RolesService } from 'src/routes/auth/roles.service'
 import envConfig from 'src/shared/config'
-import { TypeOfVerificationCode } from 'src/shared/constants/auth.constant'
+import { TypeOfVerificationCode, TypeOfVerificationCodeType } from 'src/shared/constants/auth.constant'
 import { generateOTP, isRecordNotFoundPrismaError, isUniqueConstraintPrismaError } from 'src/shared/helpers'
 import { SharedUserRepository } from 'src/shared/repositories/shared-user.repo'
 import { EmailService } from 'src/shared/services/email.service'
@@ -34,19 +40,11 @@ export class AuthService {
   ) {}
   async register(body: RegisterBodyType) {
     try {
-      const verificationCode = await this.authRepository.findUniqueVerificationCode({
+      await this.validateVerificationCode({
         email: body.email,
         code: body.code,
         type: TypeOfVerificationCode.REGISTER
       })
-
-      if (!verificationCode) {
-        throw InvalidOTPException
-      }
-
-      if (verificationCode.expiresAt < new Date()) {
-        throw OTPExpiredException
-      }
 
       const clientRoleId = await this.rolesService.getClientRoleId()
       const hashedPassword = await this.hashingService.hashPassword(body.password)
@@ -58,7 +56,16 @@ export class AuthService {
         password: hashedPassword,
         roleId: clientRoleId
       }
-      return await this.authRepository.createUser(data)
+
+      const [user] = await Promise.all([
+        this.authRepository.createUser(data),
+        this.authRepository.deleteVerificationCode({
+          email: body.email,
+          code: body.code,
+          type: TypeOfVerificationCode.REGISTER
+        })
+      ])
+      return user
     } catch (error) {
       if (isUniqueConstraintPrismaError(error)) {
         throw EmailAlreadyExistsException
@@ -70,8 +77,12 @@ export class AuthService {
   async sendOTP(body: SendOTPBodyType) {
     const user = await this.sharedUserRepository.findUnique({ email: body.email })
 
-    if (user) {
+    if (user && body.type === TypeOfVerificationCode.REGISTER) {
       throw EmailAlreadyExistsException
+    }
+
+    if (!user && body.type === TypeOfVerificationCode.FORGOT_PASSWORD) {
+      throw EmailNotFoundException
     }
 
     const code = generateOTP()
@@ -191,5 +202,61 @@ export class AuthService {
       }
       throw UnauthorizedAccessException
     }
+  }
+
+  async forgotPassword(body: ForgotPasswordBodyType) {
+    const { email, code, newPassword } = body
+
+    const user = await this.sharedUserRepository.findUnique({ email })
+    if (!user) {
+      throw EmailNotFoundException
+    }
+
+    await this.validateVerificationCode({
+      email,
+      code,
+      type: TypeOfVerificationCode.FORGOT_PASSWORD
+    })
+
+    const hashedPassword = await this.hashingService.hashPassword(newPassword)
+
+    await Promise.all([
+      this.authRepository.updateUser({ id: user.id }, { password: hashedPassword }),
+      this.authRepository.deleteVerificationCode({
+        email,
+        code,
+        type: TypeOfVerificationCode.FORGOT_PASSWORD
+      })
+    ])
+
+    return {
+      message: 'Reset password successfully'
+    }
+  }
+
+  async validateVerificationCode({
+    email,
+    code,
+    type
+  }: {
+    email: string
+    code: string
+    type: TypeOfVerificationCodeType
+  }) {
+    const verificationCode = await this.authRepository.findUniqueVerificationCode({
+      email,
+      code,
+      type
+    })
+
+    if (!verificationCode) {
+      throw InvalidOTPException
+    }
+
+    if (verificationCode.expiresAt < new Date()) {
+      throw OTPExpiredException
+    }
+
+    return verificationCode
   }
 }
