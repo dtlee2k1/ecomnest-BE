@@ -56,6 +56,21 @@ export const LoginBodySchema = UserSchema.pick({
     code: z.string().length(6).optional() // Email OTP code
   })
   .strict()
+  .superRefine(({ totpCode, code }, ctx) => {
+    const message = 'You should only transmit the 2FA authentication code or the OTP code. Do not transmit both.'
+    if (totpCode !== undefined && code !== undefined) {
+      ctx.addIssue({
+        path: ['totpCode'],
+        message,
+        code: 'custom'
+      })
+      ctx.addIssue({
+        path: ['code'],
+        message,
+        code: 'custom'
+      })
+    }
+  })
 
 export const LoginResSchema = z.object({
   accessToken: z.string(),
@@ -154,7 +169,7 @@ export const DisableTwoFactorBodySchema = z
 
 export const TwoFactorSetupResSchema = z.object({
   secret: z.string(),
-  url: z.string()
+  uri: z.string()
 })
 
 export type RegisterBodyType = z.infer<typeof RegisterBodySchema>

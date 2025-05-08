@@ -2,6 +2,7 @@ import { HttpException, Injectable } from '@nestjs/common'
 import { addMilliseconds } from 'date-fns'
 import ms, { StringValue } from 'ms'
 import {
+  DisableTwoFactorBodyType,
   ForgotPasswordBodyType,
   LoginBodyType,
   RefreshTokenBodyType,
@@ -15,8 +16,12 @@ import {
   FailedToSendOTPException,
   InvalidOTPException,
   InvalidPasswordException,
+  InvalidTOTPAndCodeException,
+  InvalidTOTPException,
   OTPExpiredException,
   RefreshTokenAlreadyUsedException,
+  TOTPAlreadyEnabledException,
+  TOTPNotEnabledException,
   UnauthorizedAccessException
 } from 'src/routes/auth/error.model'
 import { RolesService } from 'src/routes/auth/roles.service'
@@ -24,6 +29,7 @@ import envConfig from 'src/shared/config'
 import { TypeOfVerificationCode, TypeOfVerificationCodeType } from 'src/shared/constants/auth.constant'
 import { generateOTP, isRecordNotFoundPrismaError, isUniqueConstraintPrismaError } from 'src/shared/helpers'
 import { SharedUserRepository } from 'src/shared/repositories/shared-user.repo'
+import { TwoFactorService } from 'src/shared/services/2fa.service'
 import { EmailService } from 'src/shared/services/email.service'
 import { HashingService } from 'src/shared/services/hashing.service'
 import { TokenService } from 'src/shared/services/token.service'
@@ -36,7 +42,8 @@ export class AuthService {
     private readonly rolesService: RolesService,
     private readonly authRepository: AuthRepository,
     private readonly sharedUserRepository: SharedUserRepository,
-    private readonly emailService: EmailService
+    private readonly emailService: EmailService,
+    private readonly twoFactorService: TwoFactorService
   ) {}
   async register(body: RegisterBodyType) {
     try {
@@ -115,6 +122,37 @@ export class AuthService {
     const isPasswordMatch = await this.hashingService.comparePassword(data.password, user.password)
     if (!isPasswordMatch) {
       throw InvalidPasswordException
+    }
+
+    if (user.totpSecret) {
+      if (!data.totpCode && !data.code) {
+        throw InvalidTOTPAndCodeException
+      }
+
+      if (data.totpCode) {
+        const isValid = this.twoFactorService.verifyTOTP({
+          email: user.email,
+          secret: user.totpSecret,
+          token: data.totpCode
+        })
+        if (!isValid) {
+          throw InvalidTOTPException
+        }
+      } else if (data.code) {
+        await this.validateVerificationCode({
+          email: user.email,
+          code: data.code,
+          type: TypeOfVerificationCode.LOGIN
+        })
+
+        await this.authRepository.deleteVerificationCode({
+          email_code_type: {
+            email: data.email,
+            code: data.code,
+            type: TypeOfVerificationCode.LOGIN
+          }
+        })
+      }
     }
 
     const device = await this.authRepository.createDevice({ userId: user.id, userAgent: data.userAgent, ip: data.ip })
@@ -264,5 +302,62 @@ export class AuthService {
     }
 
     return verificationCode
+  }
+
+  async setupTwoFactorAuth(userId: number) {
+    const user = await this.sharedUserRepository.findUnique({
+      id: userId
+    })
+    if (!user) {
+      throw EmailNotFoundException
+    }
+    if (user.totpSecret) {
+      throw TOTPAlreadyEnabledException
+    }
+
+    const { secret, uri } = this.twoFactorService.generateTOTPSecret(user.email)
+
+    await this.authRepository.updateUser({ id: userId }, { totpSecret: secret })
+
+    return {
+      secret,
+      uri
+    }
+  }
+
+  async disableTwoFactorAuth(data: DisableTwoFactorBodyType & { userId: number }) {
+    const { userId, code, totpCode } = data
+
+    const user = await this.sharedUserRepository.findUnique({ id: userId })
+    if (!user) {
+      throw EmailNotFoundException
+    }
+
+    if (!user.totpSecret) {
+      throw TOTPNotEnabledException
+    }
+
+    if (totpCode) {
+      const isValid = this.twoFactorService.verifyTOTP({
+        email: user.email,
+        secret: user.totpSecret,
+        token: totpCode
+      })
+      if (!isValid) {
+        throw InvalidTOTPException
+      }
+    } else if (code) {
+      await this.validateVerificationCode({
+        email: user.email,
+        code,
+        type: TypeOfVerificationCode.DISABLE_2FA
+      })
+    }
+
+    await this.authRepository.updateUser({ id: userId }, { totpSecret: null })
+
+    return {
+      message: 'Disable 2FA successfully'
+    }
   }
 }

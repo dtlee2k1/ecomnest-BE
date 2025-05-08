@@ -2,6 +2,7 @@ import { Body, Controller, Get, HttpCode, HttpStatus, Ip, Post, Query, Res } fro
 import { AuthService } from './auth.service'
 import { ZodSerializerDto } from 'nestjs-zod'
 import {
+  DisableTwoFactorBodyDto,
   ForgotPasswordBodyDto,
   GetAuthorizationUrlResDto,
   LoginBodyDto,
@@ -11,7 +12,8 @@ import {
   RefreshTokenResDto,
   RegisterBodyDto,
   RegisterResDto,
-  SendOTPBodyDto
+  SendOTPBodyDto,
+  TwoFactorSetupResDto
 } from 'src/routes/auth/auth.dto'
 import { UserAgent } from 'src/shared/decorators/user-agent.decorator'
 import { MessageResDto } from 'src/shared/dtos/response.dto'
@@ -19,6 +21,8 @@ import { IsPublic } from 'src/shared/decorators/auth.decorator'
 import { GoogleService } from 'src/routes/auth/google.service'
 import { Response } from 'express'
 import envConfig from 'src/shared/config'
+import { EmptyBodyDto } from 'src/shared/dtos/request.dto'
+import { ActiveUser } from 'src/shared/decorators/active-user.decorator'
 
 @Controller('auth')
 export class AuthController {
@@ -100,5 +104,17 @@ export class AuthController {
   @ZodSerializerDto(MessageResDto)
   forgotPassword(@Body() body: ForgotPasswordBodyDto) {
     return this.authService.forgotPassword(body)
+  }
+
+  @Post('2fa/setup')
+  @ZodSerializerDto(TwoFactorSetupResDto)
+  setupTwoFactorAuth(@Body() _: EmptyBodyDto, @ActiveUser('userId') userId: number) {
+    return this.authService.setupTwoFactorAuth(userId)
+  }
+
+  @Post('2fa/disable')
+  @ZodSerializerDto(MessageResDto)
+  enableTwoFactorAuth(@Body() body: DisableTwoFactorBodyDto, @ActiveUser('userId') userId: number) {
+    return this.authService.disableTwoFactorAuth({ ...body, userId })
   }
 }
