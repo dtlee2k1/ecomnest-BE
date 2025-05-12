@@ -1,4 +1,4 @@
-import { Injectable, CanActivate, ExecutionContext, UnauthorizedException } from '@nestjs/common'
+import { Injectable, CanActivate, ExecutionContext, UnauthorizedException, HttpException } from '@nestjs/common'
 import { Reflector } from '@nestjs/core'
 import { AuthType, ConditionGuard } from 'src/shared/constants/auth.constant'
 import { AUTH_TYPE_KEY, AuthTypeDecoratorPayload } from 'src/shared/decorators/auth.decorator'
@@ -22,35 +22,55 @@ export class AuthenticationGuard implements CanActivate {
   }
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
+    const authTypeValue = this.getAuthTypeValue(context)
+    const guards = authTypeValue.authTypes.map((authType) => this.authTypeGuardMap[authType])
+
+    return authTypeValue.options.condition === ConditionGuard.Or
+      ? this.handleOrCondition(guards, context)
+      : this.handleAndCondition(guards, context)
+  }
+
+  private getAuthTypeValue(context: ExecutionContext): AuthTypeDecoratorPayload {
     const authTypeValue = this.reflector.getAllAndOverride<AuthTypeDecoratorPayload | undefined>(AUTH_TYPE_KEY, [
       context.getHandler(),
       context.getClass()
     ]) ?? { authTypes: [AuthType.Bearer], options: { condition: ConditionGuard.And } }
 
-    const guards = authTypeValue.authTypes.map((authType) => this.authTypeGuardMap[authType])
+    return authTypeValue
+  }
 
-    if (authTypeValue.options.condition === ConditionGuard.Or) {
-      let error = new UnauthorizedException()
-      for (const guard of guards) {
-        const canActivate = await Promise.resolve(guard.canActivate(context)).catch((err) => {
-          error = err
-          return false
-        })
-        if (canActivate) {
+  private async handleOrCondition(guards: CanActivate[], context: ExecutionContext) {
+    let lastError: any = null
+
+    for (const guard of guards) {
+      try {
+        if (await guard.canActivate(context)) {
           return true
         }
+      } catch (error) {
+        lastError = error
       }
-      throw error
-    } else if (authTypeValue.options.condition === ConditionGuard.And) {
-      for (const guard of guards) {
-        const canActivate = await Promise.resolve(guard.canActivate(context)).catch(() => false)
-        if (!canActivate) {
-          throw new UnauthorizedException()
-        }
-      }
-      return true
     }
 
+    if (lastError instanceof HttpException) {
+      throw lastError
+    }
+    throw new UnauthorizedException()
+  }
+
+  private async handleAndCondition(guards: CanActivate[], context: ExecutionContext) {
+    for (const guard of guards) {
+      try {
+        if (!(await guard.canActivate(context))) {
+          throw new UnauthorizedException()
+        }
+      } catch (error) {
+        if (error instanceof HttpException) {
+          throw error
+        }
+        throw new UnauthorizedException()
+      }
+    }
     return true
   }
 }
