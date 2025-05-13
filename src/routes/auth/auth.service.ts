@@ -15,7 +15,6 @@ import {
   EmailNotFoundException,
   FailedToSendOTPException,
   InvalidOTPException,
-  InvalidPasswordException,
   InvalidTOTPAndCodeException,
   InvalidTOTPException,
   OTPExpiredException,
@@ -23,7 +22,7 @@ import {
   TOTPAlreadyEnabledException,
   TOTPNotEnabledException,
   UnauthorizedAccessException
-} from 'src/routes/auth/error.model'
+} from 'src/routes/auth/auth.error'
 import { RolesService } from 'src/routes/auth/roles.service'
 import envConfig from 'src/shared/config'
 import { TypeOfVerificationCode, TypeOfVerificationCodeType } from 'src/shared/constants/auth.constant'
@@ -33,6 +32,7 @@ import { TwoFactorService } from 'src/shared/services/2fa.service'
 import { EmailService } from 'src/shared/services/email.service'
 import { HashingService } from 'src/shared/services/hashing.service'
 import { TokenService } from 'src/shared/services/token.service'
+import { InvalidPasswordException } from 'src/shared/error'
 
 @Injectable()
 export class AuthService {
@@ -261,7 +261,10 @@ export class AuthService {
     const hashedPassword = await this.hashingService.hashPassword(newPassword)
 
     await Promise.all([
-      this.authRepository.updateUser({ id: user.id }, { password: hashedPassword }),
+      this.sharedUserRepository.update(
+        { id: user.id, deletedAt: null },
+        { password: hashedPassword, updatedById: user.id }
+      ),
       this.authRepository.deleteVerificationCode({
         email_code_type: {
           email,
@@ -317,7 +320,7 @@ export class AuthService {
 
     const { secret, uri } = this.twoFactorService.generateTOTPSecret(user.email)
 
-    await this.authRepository.updateUser({ id: userId }, { totpSecret: secret })
+    await this.sharedUserRepository.update({ id: userId, deletedAt: null }, { totpSecret: secret, updatedById: userId })
 
     return {
       secret,
@@ -354,7 +357,7 @@ export class AuthService {
       })
     }
 
-    await this.authRepository.updateUser({ id: userId }, { totpSecret: null })
+    await this.sharedUserRepository.update({ id: userId, deletedAt: null }, { totpSecret: null, updatedById: userId })
 
     return {
       message: 'Disable 2FA successfully'

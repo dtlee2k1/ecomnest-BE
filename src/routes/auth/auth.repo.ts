@@ -119,13 +119,6 @@ export class AuthRepository {
     })
   }
 
-  async updateUser(where: { id: number } | { email: string }, data: Partial<Omit<UserType, 'id'>>): Promise<UserType> {
-    return await this.prismaService.user.update({
-      where,
-      data
-    })
-  }
-
   async deleteVerificationCode(
     uniqueValue:
       | { id: number }
