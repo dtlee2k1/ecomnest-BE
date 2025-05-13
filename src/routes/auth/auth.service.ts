@@ -23,7 +23,7 @@ import {
   TOTPNotEnabledException,
   UnauthorizedAccessException
 } from 'src/routes/auth/auth.error'
-import { RolesService } from 'src/routes/auth/roles.service'
+import { SharedRoleRepository } from 'src/shared/repositories/shared-role.repo'
 import envConfig from 'src/shared/config'
 import { TypeOfVerificationCode, TypeOfVerificationCodeType } from 'src/shared/constants/auth.constant'
 import { generateOTP, isRecordNotFoundPrismaError, isUniqueConstraintPrismaError } from 'src/shared/helpers'
@@ -39,7 +39,7 @@ export class AuthService {
   constructor(
     private readonly hashingService: HashingService,
     private readonly tokenService: TokenService,
-    private readonly rolesService: RolesService,
+    private readonly rolesService: SharedRoleRepository,
     private readonly authRepository: AuthRepository,
     private readonly sharedUserRepository: SharedUserRepository,
     private readonly emailService: EmailService,
