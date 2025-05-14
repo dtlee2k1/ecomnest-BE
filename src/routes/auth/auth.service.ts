@@ -261,10 +261,7 @@ export class AuthService {
     const hashedPassword = await this.hashingService.hashPassword(newPassword)
 
     await Promise.all([
-      this.sharedUserRepository.update(
-        { id: user.id, deletedAt: null },
-        { password: hashedPassword, updatedById: user.id }
-      ),
+      this.sharedUserRepository.update({ id: user.id }, { password: hashedPassword, updatedById: user.id }),
       this.authRepository.deleteVerificationCode({
         email_code_type: {
           email,
@@ -320,7 +317,7 @@ export class AuthService {
 
     const { secret, uri } = this.twoFactorService.generateTOTPSecret(user.email)
 
-    await this.sharedUserRepository.update({ id: userId, deletedAt: null }, { totpSecret: secret, updatedById: userId })
+    await this.sharedUserRepository.update({ id: userId }, { totpSecret: secret, updatedById: userId })
 
     return {
       secret,
@@ -357,7 +354,7 @@ export class AuthService {
       })
     }
 
-    await this.sharedUserRepository.update({ id: userId, deletedAt: null }, { totpSecret: null, updatedById: userId })
+    await this.sharedUserRepository.update({ id: userId }, { totpSecret: null, updatedById: userId })
 
     return {
       message: 'Disable 2FA successfully'
