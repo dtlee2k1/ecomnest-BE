@@ -1,4 +1,5 @@
 import {
+  Body,
   Controller,
   Get,
   HttpStatus,
@@ -17,12 +18,15 @@ import { UPLOAD_DIR } from 'src/shared/constants/other.constant'
 import { Response } from 'express'
 import { MediaService } from 'src/routes/media/media.service'
 import { ParseFilePipeWithUnlink } from 'src/routes/media/parse-file-pipe-with-unlink.pipe'
+import { ZodSerializerDto } from 'nestjs-zod'
+import { PresignedUploadFileBodyDto, PresignedUploadFileResDto, UploadFilesResDto } from 'src/routes/media/media.dto'
 
 @Controller('media')
 export class MediaController {
   constructor(private readonly mediaService: MediaService) {}
 
   @Post('images/upload')
+  @ZodSerializerDto(UploadFilesResDto)
   @UseInterceptors(
     FilesInterceptor('files', 2, {
       limits: {
@@ -51,5 +55,12 @@ export class MediaController {
         res.status(HttpStatus.NOT_FOUND).json(new NotFoundException('File not found'))
       }
     })
+  }
+
+  @Post('images/upload/presigned-url')
+  @IsPublic()
+  @ZodSerializerDto(PresignedUploadFileResDto)
+  async createPresignedUrl(@Body() body: PresignedUploadFileBodyDto) {
+    return this.mediaService.getPresignedUrl(body)
   }
 }
