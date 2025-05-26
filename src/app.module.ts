@@ -17,6 +17,8 @@ import { BrandModule } from './routes/brand/brand.module'
 import { BrandTranslationModule } from 'src/routes/brand/brand-translation/brand-translation.module'
 import path from 'path'
 import { AcceptLanguageResolver, I18nModule, QueryResolver } from 'nestjs-i18n'
+import { CategoryModule } from './routes/category/category.module'
+import { CategoryTranslationModule } from 'src/routes/category/category-translation/category-translation.module'
 
 @Module({
   imports: [
@@ -30,6 +32,8 @@ import { AcceptLanguageResolver, I18nModule, QueryResolver } from 'nestjs-i18n'
     MediaModule,
     BrandModule,
     BrandTranslationModule,
+    CategoryModule,
+    CategoryTranslationModule,
     I18nModule.forRoot({
       fallbackLanguage: 'en',
       loaderOptions: {
