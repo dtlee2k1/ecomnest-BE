@@ -1,4 +1,4 @@
-import { BrandTranslationSchema } from 'src/routes/brand/brand-translation/brand-translation.model'
+import { BrandIncludeTranslationSchema } from 'src/shared/models/shared-brand.model'
 import { z } from 'zod'
 
 export const BrandSchema = z.object({
@@ -12,10 +12,6 @@ export const BrandSchema = z.object({
   deletedAt: z.date().nullable(),
   createdAt: z.date(),
   updatedAt: z.date()
-})
-
-const BrandIncludeTranslationSchema = BrandSchema.extend({
-  brandTranslations: z.array(BrandTranslationSchema)
 })
 
 export const GetBrandsResSchema = z.object({
