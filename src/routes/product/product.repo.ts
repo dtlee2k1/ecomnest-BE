@@ -147,7 +147,6 @@ export class ProductRepo {
     // SKUs that exist in the DB and are in the data payload will be updated
     // SKUs that do not exist in the DB but are in the data payload will be created
 
-    // Lấy danh sách SKU hiện tại trong DB
     // Get the current list of SKUs in the database
     const existingSKUs = await this.prismaService.sKU.findMany({
       where: {

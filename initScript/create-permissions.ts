@@ -5,6 +5,8 @@ import { PrismaService } from 'src/shared/services/prisma.service'
 
 const prisma = new PrismaService()
 
+const SellerModule = ['AUTH', 'MEDIA', 'MANAGE-PRODUCT', 'PRODUCT-TRANSLATIONS', 'PROFILE']
+
 async function bootstrap() {
   const app = await NestFactory.create(AppModule)
   await app.listen(3001)
@@ -75,23 +77,32 @@ async function bootstrap() {
     }
   })
 
-  const adminRole = await prisma.role.findFirstOrThrow({
+  const adminPermissionIds = updatedPermissionsInDb.map((item) => ({ id: item.id }))
+  const sellerPermissionIds = updatedPermissionsInDb
+    .filter((item) => SellerModule.includes(item.module))
+    .map((item) => ({ id: item.id }))
+
+  await Promise.all([updateRole(adminPermissionIds, RoleName.Admin), updateRole(sellerPermissionIds, RoleName.Seller)])
+
+  process.exit(0)
+}
+
+const updateRole = async (permissionIds: { id: number }[], roleName: string) => {
+  const role = await prisma.role.findFirstOrThrow({
     where: {
-      name: RoleName.Admin,
+      name: roleName,
       deletedAt: null
     }
   })
   await prisma.role.update({
     where: {
-      id: adminRole.id
+      id: role.id
     },
     data: {
       permissions: {
-        set: updatedPermissionsInDb.map((item) => ({ id: item.id }))
+        set: permissionIds
       }
     }
   })
-
-  process.exit(0)
 }
 bootstrap()
