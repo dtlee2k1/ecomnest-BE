@@ -6,10 +6,10 @@ import {
   UpdateProductTranslationBodySchema
 } from 'src/routes/product/product-translation/product-translation.model'
 
-export class GetProductTranslationDetailResDTO extends createZodDto(GetProductTranslationDetailResSchema) {}
+export class GetProductTranslationDetailResDto extends createZodDto(GetProductTranslationDetailResSchema) {}
 
-export class GetProductTranslationParamsDTO extends createZodDto(GetProductTranslationParamsSchema) {}
+export class GetProductTranslationParamsDto extends createZodDto(GetProductTranslationParamsSchema) {}
 
-export class CreateProductTranslationBodyDTO extends createZodDto(CreateProductTranslationBodySchema) {}
+export class CreateProductTranslationBodyDto extends createZodDto(CreateProductTranslationBodySchema) {}
 
-export class UpdateProductTranslationBodyDTO extends createZodDto(UpdateProductTranslationBodySchema) {}
+export class UpdateProductTranslationBodyDto extends createZodDto(UpdateProductTranslationBodySchema) {}
