@@ -101,10 +101,13 @@ export class UserService {
         roleIdTarget
       })
 
+      const hashedPassword = await this.hashingService.hashPassword(data.password)
+
       const updatedUser = await this.sharedUserRepository.update(
         { id },
         {
           ...data,
+          password: hashedPassword,
           updatedById
         }
       )

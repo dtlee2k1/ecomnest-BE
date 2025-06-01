@@ -1,5 +1,6 @@
 /* eslint-disable @typescript-eslint/no-unused-vars */
 import { Injectable } from '@nestjs/common'
+import { Prisma } from '@prisma/client'
 import {
   CreateProductBodyType,
   GetProductDetailResType,
@@ -15,20 +16,54 @@ import { PrismaService } from 'src/shared/services/prisma.service'
 export class ProductRepo {
   constructor(private prismaService: PrismaService) {}
 
-  async list(query: GetProductsQueryType, languageId: string): Promise<GetProductsResType> {
-    const skip = (query.page - 1) * query.limit
-    const take = query.limit
+  async list({
+    limit,
+    page,
+    name,
+    brandIds,
+    categories,
+    minPrice,
+    maxPrice,
+    createdById,
+    isPublic,
+    languageId
+  }: {
+    limit: number
+    page: number
+    name?: string
+    brandIds?: number[]
+    categories?: number[]
+    minPrice?: number
+    maxPrice?: number
+    createdById?: number
+    isPublic?: boolean
+    languageId: string
+  }): Promise<GetProductsResType> {
+    const skip = (page - 1) * limit
+    const take = limit
+
+    let where: Prisma.ProductWhereInput = {
+      deletedAt: null,
+      createdById: createdById ? createdById : undefined
+    }
+    if (isPublic === true) {
+      where.publishedAt = {
+        lte: new Date(),
+        not: null
+      }
+    } else if (isPublic === false) {
+      where = {
+        ...where,
+        OR: [{ publishedAt: null }, { publishedAt: { gt: new Date() } }]
+      }
+    }
 
     const [totalItems, data] = await Promise.all([
       this.prismaService.product.count({
-        where: {
-          deletedAt: null
-        }
+        where
       }),
       this.prismaService.product.findMany({
-        where: {
-          deletedAt: null
-        },
+        where,
         include: {
           productTranslations: {
             where: languageId === ALL_LANGUAGE_CODE ? { deletedAt: null } : { deletedAt: null, languageId }
@@ -45,18 +80,48 @@ export class ProductRepo {
     return {
       data,
       totalItems,
-      page: query.page,
-      limit: query.limit,
-      totalPages: Math.ceil(totalItems / query.limit)
+      page: page,
+      limit: limit,
+      totalPages: Math.ceil(totalItems / limit)
     }
   }
 
-  async findById(productId: number, languageId: string): Promise<GetProductDetailResType | null> {
-    return this.prismaService.product.findFirst({
+  findById(productId: number): Promise<ProductType | null> {
+    return this.prismaService.product.findUnique({
       where: {
         id: productId,
         deletedAt: null
-      },
+      }
+    })
+  }
+
+  async getDetail({
+    productId,
+    languageId,
+    isPublic
+  }: {
+    productId: number
+    languageId: string
+    isPublic?: boolean
+  }): Promise<GetProductDetailResType | null> {
+    let where: Prisma.ProductWhereUniqueInput = {
+      id: productId,
+      deletedAt: null
+    }
+    if (isPublic === true) {
+      where.publishedAt = {
+        lte: new Date(),
+        not: null
+      }
+    } else if (isPublic === false) {
+      where = {
+        ...where,
+        OR: [{ publishedAt: null }, { publishedAt: { gt: new Date() } }]
+      }
+    }
+
+    return this.prismaService.product.findUnique({
+      where,
       include: {
         productTranslations: {
           where: languageId === ALL_LANGUAGE_CODE ? { deletedAt: null } : { deletedAt: null, languageId }
@@ -238,19 +303,11 @@ export class ProductRepo {
     isHard?: boolean
   ): Promise<ProductType> {
     if (isHard) {
-      const [product] = await Promise.all([
-        this.prismaService.product.delete({
-          where: {
-            id: productId
-          }
-        }),
-        this.prismaService.sKU.deleteMany({
-          where: {
-            productId
-          }
-        })
-      ])
-      return product
+      return this.prismaService.product.delete({
+        where: {
+          id: productId
+        }
+      })
     }
 
     const now = new Date()
@@ -258,6 +315,16 @@ export class ProductRepo {
       this.prismaService.product.update({
         where: {
           id: productId
+        },
+        data: {
+          deletedById,
+          deletedAt: now
+        }
+      }),
+      this.prismaService.productTranslation.updateMany({
+        where: {
+          productId,
+          deletedAt: null
         },
         data: {
           deletedById,

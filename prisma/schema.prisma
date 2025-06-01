@@ -264,6 +264,7 @@ model ProductTranslation {
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
 
+  @@index([productId])
   @@index([deletedAt])
 }
 
