@@ -4,12 +4,11 @@ import { Prisma } from '@prisma/client'
 import {
   CreateProductBodyType,
   GetProductDetailResType,
-  GetProductsQueryType,
   GetProductsResType,
   ProductType,
   UpdateProductBodyType
 } from 'src/routes/product/product.model'
-import { ALL_LANGUAGE_CODE } from 'src/shared/constants/other.constant'
+import { ALL_LANGUAGE_CODE, OrderByType, SortBy, SortByType } from 'src/shared/constants/other.constant'
 import { PrismaService } from 'src/shared/services/prisma.service'
 
 @Injectable()
@@ -26,7 +25,9 @@ export class ProductRepo {
     maxPrice,
     createdById,
     isPublic,
-    languageId
+    languageId,
+    orderBy,
+    sortBy
   }: {
     limit: number
     page: number
@@ -38,6 +39,8 @@ export class ProductRepo {
     createdById?: number
     isPublic?: boolean
     languageId: string
+    orderBy: OrderByType
+    sortBy: SortByType
   }): Promise<GetProductsResType> {
     const skip = (page - 1) * limit
     const take = limit
@@ -89,6 +92,22 @@ export class ProductRepo {
       }
     }
 
+    let orderByClause: Prisma.ProductOrderByWithRelationInput = {
+      createdAt: orderBy
+    }
+
+    if (sortBy === SortBy.Price) {
+      orderByClause = {
+        basePrice: orderBy
+      }
+    } else if (sortBy === SortBy.Sale) {
+      orderByClause = {
+        orders: {
+          _count: orderBy
+        }
+      }
+    }
+
     const [totalItems, data] = await Promise.all([
       this.prismaService.product.count({
         where
@@ -98,11 +117,15 @@ export class ProductRepo {
         include: {
           productTranslations: {
             where: languageId === ALL_LANGUAGE_CODE ? { deletedAt: null } : { deletedAt: null, languageId }
+          },
+          orders: {
+            where: {
+              deletedAt: null,
+              status: 'DELIVERED'
+            }
           }
         },
-        orderBy: {
-          createdAt: 'desc'
-        },
+        orderBy: orderByClause,
         skip,
         take
       })
