@@ -41,7 +41,12 @@ export class ManageProductService {
       limit: props.query.limit,
       languageId: I18nContext.current()?.lang as string,
       createdById: props.query.createdById,
-      isPublic: props.query.isPublic
+      isPublic: props.query.isPublic,
+      name: props.query.name,
+      brandIds: props.query.brandIds,
+      categories: props.query.categories,
+      minPrice: props.query.minPrice,
+      maxPrice: props.query.maxPrice
     })
     return data
   }
