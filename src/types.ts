@@ -1,4 +1,4 @@
-import { VariantsType } from 'src/routes/product/product.model'
+import { VariantsType } from 'src/shared/models/shared-product.model'
 
 /* eslint-disable @typescript-eslint/no-namespace */
 declare global {
