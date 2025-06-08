@@ -22,6 +22,7 @@ import { CategoryTranslationModule } from 'src/routes/category/category-translat
 import { ProductModule } from './routes/product/product.module'
 import { ProductTranslationModule } from 'src/routes/product/product-translation/product-translation.module'
 import { CartModule } from './routes/cart/cart.module'
+import { OrderModule } from './routes/order/order.module';
 
 @Module({
   imports: [
@@ -49,7 +50,8 @@ import { CartModule } from './routes/cart/cart.module'
       },
       resolvers: [{ use: QueryResolver, options: ['lang'] }, AcceptLanguageResolver],
       typesOutputPath: path.resolve('src/generated/i18n.generated.ts')
-    })
+    }),
+    OrderModule
   ],
   controllers: [AppController],
   providers: [
