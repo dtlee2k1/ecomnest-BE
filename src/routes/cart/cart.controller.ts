@@ -31,8 +31,16 @@ export class CartController {
 
   @Put(':cartItemId')
   @ZodSerializerDto(CartItemDto)
-  updateCartItem(@Param() param: GetCartItemParamsDto, @Body() body: UpdateCartItemBodyDto) {
-    return this.cartService.updateCartItem(param.cartItemId, body)
+  updateCartItem(
+    @ActiveUser('userId') userId: number,
+    @Param() param: GetCartItemParamsDto,
+    @Body() body: UpdateCartItemBodyDto
+  ) {
+    return this.cartService.updateCartItem({
+      userId,
+      cartItemId: param.cartItemId,
+      body
+    })
   }
 
   @Post('delete')
