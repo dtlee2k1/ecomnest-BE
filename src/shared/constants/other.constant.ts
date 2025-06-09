@@ -4,6 +4,8 @@ export const UPLOAD_DIR = path.resolve('upload')
 
 export const ALL_LANGUAGE_CODE = 'all'
 
+export const PREFIX_PAYMENT_CODE = 'DH'
+
 export const OrderBy = {
   Asc: 'asc',
   Desc: 'desc'
