@@ -22,11 +22,28 @@ import { CategoryTranslationModule } from 'src/routes/category/category-translat
 import { ProductModule } from './routes/product/product.module'
 import { ProductTranslationModule } from 'src/routes/product/product-translation/product-translation.module'
 import { CartModule } from './routes/cart/cart.module'
-import { OrderModule } from './routes/order/order.module';
-import { PaymentModule } from './routes/payment/payment.module';
+import { OrderModule } from './routes/order/order.module'
+import { PaymentModule } from './routes/payment/payment.module'
+import { BullModule } from '@nestjs/bullmq'
+import { PaymentConsumer } from 'src/queue/payment.queue'
 
 @Module({
   imports: [
+    BullModule.forRoot({
+      connection: {
+        host: 'localhost',
+        port: 6379
+      }
+    }),
+    I18nModule.forRoot({
+      fallbackLanguage: 'en',
+      loaderOptions: {
+        path: path.resolve('src/i18n/'),
+        watch: true
+      },
+      resolvers: [{ use: QueryResolver, options: ['lang'] }, AcceptLanguageResolver],
+      typesOutputPath: path.resolve('src/generated/i18n.generated.ts')
+    }),
     SharedModule,
     AuthModule,
     LanguageModule,
@@ -43,15 +60,6 @@ import { PaymentModule } from './routes/payment/payment.module';
     ProductTranslationModule,
     ProductModule,
     CartModule,
-    I18nModule.forRoot({
-      fallbackLanguage: 'en',
-      loaderOptions: {
-        path: path.resolve('src/i18n/'),
-        watch: true
-      },
-      resolvers: [{ use: QueryResolver, options: ['lang'] }, AcceptLanguageResolver],
-      typesOutputPath: path.resolve('src/generated/i18n.generated.ts')
-    }),
     OrderModule,
     PaymentModule
   ],
@@ -69,7 +77,8 @@ import { PaymentModule } from './routes/payment/payment.module';
     {
       provide: APP_FILTER,
       useClass: HttpExceptionFilter
-    }
+    },
+    PaymentConsumer
   ]
 })
 export class AppModule {}
