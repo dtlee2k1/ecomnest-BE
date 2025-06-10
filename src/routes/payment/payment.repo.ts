@@ -21,7 +21,10 @@ export class PaymentRepo {
     }, 0)
   }
 
-  async receiver(body: WebhookPaymentBodyType): Promise<MessageResType> {
+  async receiver(body: WebhookPaymentBodyType): Promise<{
+    paymentId: number
+    message: MessageResType['message']
+  }> {
     // Add transaction information to the database
     let amountIn = 0
     let amountOut = 0
@@ -104,6 +107,7 @@ export class PaymentRepo {
     ])
 
     return {
+      paymentId,
       message: 'Payment successfully'
     }
   }
