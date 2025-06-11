@@ -16,6 +16,7 @@ import {
   GetOrderListQueryType,
   GetOrderListResType
 } from 'src/routes/order/order.model'
+import { OrderProducer } from 'src/routes/order/order.producer'
 import { OrderStatus } from 'src/shared/constants/order.constant'
 import { PaymentStatus } from 'src/shared/constants/payment.constant'
 import { isRecordNotFoundPrismaError } from 'src/shared/helpers'
@@ -23,7 +24,10 @@ import { PrismaService } from 'src/shared/services/prisma.service'
 
 @Injectable()
 export class OrderRepo {
-  constructor(private readonly prismaService: PrismaService) {}
+  constructor(
+    private readonly prismaService: PrismaService,
+    private readonly orderProducer: OrderProducer
+  ) {}
   async list(userId: number, query: GetOrderListQueryType): Promise<GetOrderListResType> {
     const { page, limit, status } = query
     const skip = (page - 1) * limit
@@ -58,13 +62,7 @@ export class OrderRepo {
     }
   }
 
-  async create(
-    userId: number,
-    body: CreateOrderBodyType
-  ): Promise<{
-    paymentId: number
-    orders: CreateOrderResType['data']
-  }> {
+  async create(userId: number, body: CreateOrderBodyType): Promise<CreateOrderResType> {
     const allBodyCartItemIds = body.map((item) => item.cartItemIds).flat()
     const cartItems = await this.prismaService.cartItem.findMany({
       where: {
@@ -126,7 +124,7 @@ export class OrderRepo {
     }
 
     // Create order and delete cartItem in transaction to ensure data integrity
-    const [orders, paymentId] = await this.prismaService.$transaction(async (tx) => {
+    const orders = await this.prismaService.$transaction(async (tx) => {
       const payment = await tx.payment.create({
         data: {
           status: PaymentStatus.PENDING
@@ -200,14 +198,15 @@ export class OrderRepo {
         )
       )
 
-      const [orders] = await Promise.all([$orders, $cartItem, $sku])
+      const $addCancelPaymentJob = this.orderProducer.addCancelPaymentJob(payment.id)
 
-      return [orders, payment.id]
+      const [orders] = await Promise.all([$orders, $cartItem, $sku, $addCancelPaymentJob])
+
+      return orders
     })
 
     return {
-      paymentId,
-      orders
+      data: orders
     }
   }
 
