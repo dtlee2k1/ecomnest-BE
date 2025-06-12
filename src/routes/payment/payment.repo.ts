@@ -25,7 +25,7 @@ export class PaymentRepo {
     }, 0)
   }
 
-  async receiver(body: WebhookPaymentBodyType): Promise<MessageResType> {
+  async receiver(body: WebhookPaymentBodyType): Promise<number> {
     // Add transaction information to the database
     let amountIn = 0
     let amountOut = 0
@@ -44,7 +44,7 @@ export class PaymentRepo {
       throw new BadRequestException('Transaction already exists')
     }
 
-    await this.prismaService.$transaction(async (tx) => {
+    const userId = await this.prismaService.$transaction(async (tx) => {
       await tx.paymentTransaction.create({
         data: {
           id: body.id,
@@ -88,6 +88,8 @@ export class PaymentRepo {
       }
 
       const { orders } = payment
+      const userId = orders[0].userId
+
       const totalPrice = this.getTotalPrice(orders)
       if (totalPrice !== body.transferAmount) {
         throw new BadRequestException(
@@ -118,10 +120,10 @@ export class PaymentRepo {
         // Remove the job from the queue
         this.paymentProducer.removeJob(paymentId)
       ])
+
+      return userId
     })
 
-    return {
-      message: 'Payment successfully'
-    }
+    return userId
   }
 }
