@@ -29,7 +29,9 @@ import { PaymentConsumer } from 'src/queue/payment.queue'
 import { WebSocketModule } from 'src/websockets/websocket.module'
 import { ThrottlerBehindProxyGuard } from 'src/shared/guards/throttler-behind-proxy.guard'
 import { ThrottlerModule } from '@nestjs/throttler'
-import { ReviewModule } from './routes/review/review.module';
+import { ReviewModule } from './routes/review/review.module'
+import { ScheduleModule } from '@nestjs/schedule'
+import { RemoveRefreshTokenCronjob } from 'src/cronjobs/remove-refresh-token.cronjob'
 
 @Module({
   imports: [
@@ -56,6 +58,7 @@ import { ReviewModule } from './routes/review/review.module';
         }
       ]
     }),
+    ScheduleModule.forRoot(),
     SharedModule,
     AuthModule,
     LanguageModule,
@@ -96,7 +99,8 @@ import { ReviewModule } from './routes/review/review.module';
       provide: APP_GUARD,
       useClass: ThrottlerBehindProxyGuard
     },
-    PaymentConsumer
+    PaymentConsumer,
+    RemoveRefreshTokenCronjob
   ]
 })
 export class AppModule {}
