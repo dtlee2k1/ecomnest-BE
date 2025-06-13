@@ -6,6 +6,7 @@ import {
   UpdatePermissionBodyType
 } from 'src/routes/permission/permission.model'
 import { PermissionType } from 'src/shared/models/shared-permission.model'
+import { RoleType } from 'src/shared/models/shared-role.model'
 import { PrismaService } from 'src/shared/services/prisma.service'
 
 @Injectable()
@@ -70,11 +71,14 @@ export class PermissionRepo {
     id: number
     updatedById: number
     data: UpdatePermissionBodyType
-  }): Promise<PermissionType> {
+  }): Promise<PermissionType & { roles: RoleType[] }> {
     return this.prismaService.permission.update({
       where: {
         id,
         deletedAt: null
+      },
+      include: {
+        roles: true
       },
       data: {
         ...data,
@@ -92,17 +96,23 @@ export class PermissionRepo {
       deletedById: number
     },
     isHard?: boolean
-  ): Promise<PermissionType> {
+  ): Promise<PermissionType & { roles: RoleType[] }> {
     return isHard
       ? this.prismaService.permission.delete({
           where: {
             id
+          },
+          include: {
+            roles: true
           }
         })
       : this.prismaService.permission.update({
           where: {
             id,
             deletedAt: null
+          },
+          include: {
+            roles: true
           },
           data: {
             deletedAt: new Date(),

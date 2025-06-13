@@ -32,6 +32,8 @@ import { ThrottlerModule } from '@nestjs/throttler'
 import { ReviewModule } from './routes/review/review.module'
 import { ScheduleModule } from '@nestjs/schedule'
 import { RemoveRefreshTokenCronjob } from 'src/cronjobs/remove-refresh-token.cronjob'
+import { CacheModule } from '@nestjs/cache-manager'
+import { createKeyv, Keyv } from '@keyv/redis'
 
 @Module({
   imports: [
@@ -59,6 +61,14 @@ import { RemoveRefreshTokenCronjob } from 'src/cronjobs/remove-refresh-token.cro
       ]
     }),
     ScheduleModule.forRoot(),
+    CacheModule.registerAsync({
+      isGlobal: true,
+      useFactory: () => {
+        return {
+          stores: [createKeyv('redis://localhost:6379')]
+        }
+      }
+    }),
     SharedModule,
     AuthModule,
     LanguageModule,

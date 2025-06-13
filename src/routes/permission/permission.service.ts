@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common'
+import { Inject, Injectable } from '@nestjs/common'
 import { PermissionRepo } from 'src/routes/permission/permission.repo'
 import {
   CreatePermissionBodyType,
@@ -8,10 +8,16 @@ import {
 import { NotFoundRecordException } from 'src/shared/error'
 import { isRecordNotFoundPrismaError, isUniqueConstraintPrismaError } from 'src/shared/helpers'
 import { PermissionAlreadyExistsException } from 'src/routes/permission/permission.error'
+import { CACHE_MANAGER } from '@nestjs/cache-manager'
+import { Cache } from 'cache-manager'
+import { RoleType } from 'src/shared/models/shared-role.model'
 
 @Injectable()
 export class PermissionService {
-  constructor(private permissionRepo: PermissionRepo) {}
+  constructor(
+    private permissionRepo: PermissionRepo,
+    @Inject(CACHE_MANAGER) private cacheManager: Cache
+  ) {}
 
   async list(pagination: GetPermissionsQueryType) {
     const data = await this.permissionRepo.list(pagination)
@@ -47,6 +53,10 @@ export class PermissionService {
         updatedById,
         data
       })
+
+      const { roles } = permission
+      await this.deleteCachedRoles(roles)
+
       return permission
     } catch (error) {
       if (isRecordNotFoundPrismaError(error)) {
@@ -61,10 +71,13 @@ export class PermissionService {
 
   async delete({ id, deletedById }: { id: number; deletedById: number }) {
     try {
-      await this.permissionRepo.delete({
+      const permission = await this.permissionRepo.delete({
         id,
         deletedById
       })
+      const { roles } = permission
+      await this.deleteCachedRoles(roles)
+
       return {
         message: 'Delete successfully'
       }
@@ -74,5 +87,14 @@ export class PermissionService {
       }
       throw error
     }
+  }
+
+  deleteCachedRoles(roles: RoleType[]) {
+    return Promise.all(
+      roles.map((role) => {
+        const cacheKey = `role:${role.id}`
+        return this.cacheManager.del(cacheKey)
+      })
+    )
   }
 }
