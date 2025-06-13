@@ -3,7 +3,7 @@ import { AppController } from './app.controller'
 import { AppService } from './app.service'
 import { SharedModule } from 'src/shared/shared.module'
 import { AuthModule } from './routes/auth/auth.module'
-import { APP_FILTER, APP_INTERCEPTOR, APP_PIPE } from '@nestjs/core'
+import { APP_FILTER, APP_GUARD, APP_INTERCEPTOR, APP_PIPE } from '@nestjs/core'
 import CustomValidationPipe from 'src/shared/pipes/custom-zod-validation.pipe'
 import { ZodSerializerInterceptor } from 'nestjs-zod'
 import { HttpExceptionFilter } from 'src/shared/filters/http-exception.filter'
@@ -27,6 +27,9 @@ import { PaymentModule } from './routes/payment/payment.module'
 import { BullModule } from '@nestjs/bullmq'
 import { PaymentConsumer } from 'src/queue/payment.queue'
 import { WebSocketModule } from 'src/websockets/websocket.module'
+import { ThrottlerBehindProxyGuard } from 'src/shared/guards/throttler-behind-proxy.guard'
+import { ThrottlerModule } from '@nestjs/throttler'
+import { ReviewModule } from './routes/review/review.module';
 
 @Module({
   imports: [
@@ -44,6 +47,14 @@ import { WebSocketModule } from 'src/websockets/websocket.module'
       },
       resolvers: [{ use: QueryResolver, options: ['lang'] }, AcceptLanguageResolver],
       typesOutputPath: path.resolve('src/generated/i18n.generated.ts')
+    }),
+    ThrottlerModule.forRoot({
+      throttlers: [
+        {
+          ttl: 60000, // 1 minute
+          limit: 10
+        }
+      ]
     }),
     SharedModule,
     AuthModule,
@@ -63,7 +74,8 @@ import { WebSocketModule } from 'src/websockets/websocket.module'
     CartModule,
     OrderModule,
     PaymentModule,
-    WebSocketModule
+    WebSocketModule,
+    ReviewModule
   ],
   controllers: [AppController],
   providers: [
@@ -79,6 +91,10 @@ import { WebSocketModule } from 'src/websockets/websocket.module'
     {
       provide: APP_FILTER,
       useClass: HttpExceptionFilter
+    },
+    {
+      provide: APP_GUARD,
+      useClass: ThrottlerBehindProxyGuard
     },
     PaymentConsumer
   ]
