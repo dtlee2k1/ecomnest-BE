@@ -20,6 +20,7 @@ import { OrderProducer } from 'src/routes/order/order.producer'
 import { OrderStatus } from 'src/shared/constants/order.constant'
 import { PaymentStatus } from 'src/shared/constants/payment.constant'
 import { isRecordNotFoundPrismaError } from 'src/shared/helpers'
+import { SKUSchemaType } from 'src/shared/models/shared-sku.model'
 import { PrismaService } from 'src/shared/services/prisma.service'
 
 @Injectable()
@@ -63,68 +64,81 @@ export class OrderRepo {
   }
 
   async create(userId: number, body: CreateOrderBodyType): Promise<CreateOrderResType> {
-    const allBodyCartItemIds = body.map((item) => item.cartItemIds).flat()
-    const cartItems = await this.prismaService.cartItem.findMany({
-      where: {
-        id: {
-          in: allBodyCartItemIds
+    const orders = await this.prismaService.$transaction(async (tx) => {
+      const allBodyCartItemIds = body.map((item) => item.cartItemIds).flat()
+      const cartItems = await tx.cartItem.findMany({
+        where: {
+          id: {
+            in: allBodyCartItemIds
+          },
+          userId
         },
-        userId
-      },
-      include: {
-        sku: {
-          include: {
-            product: {
-              include: {
-                productTranslations: true
+        include: {
+          sku: {
+            include: {
+              product: {
+                include: {
+                  productTranslations: true
+                }
               }
             }
           }
         }
-      }
-    })
-    // Check if all cartItemIds exist in the database
-    if (cartItems.length !== allBodyCartItemIds.length) {
-      throw NotFoundCartItemException
-    }
-
-    // Check if the purchase quantity is greater than the stock quantity
-    const isOutOfStock = cartItems.some((item) => {
-      return item.sku.stock < item.quantity
-    })
-    if (isOutOfStock) {
-      throw OutOfStockSKUException
-    }
-
-    // Check if all purchased products have been deleted or unpublished
-    const isExistNotReadyProduct = cartItems.some(
-      (item) =>
-        item.sku.product.deletedAt !== null ||
-        item.sku.product.publishedAt === null ||
-        item.sku.product.publishedAt > new Date()
-    )
-    if (isExistNotReadyProduct) {
-      throw ProductNotFoundException
-    }
-
-    // Check if the skuId in the cartItem sent belongs to the shopId sent
-    const cartItemMap = new Map<number, (typeof cartItems)[number]>()
-    cartItems.forEach((item) => {
-      cartItemMap.set(item.id, item)
-    })
-    const isValidShop = body.every((item) => {
-      const bodyCartItemIds = item.cartItemIds
-      return bodyCartItemIds.every((cartItemId) => {
-        const cartItem = cartItemMap.get(cartItemId)!
-        return item.shopId === cartItem.sku.createdById
       })
-    })
-    if (!isValidShop) {
-      throw SKUNotBelongToShopException
-    }
+      // Check if all cartItemIds exist in the database
+      if (cartItems.length !== allBodyCartItemIds.length) {
+        throw NotFoundCartItemException
+      }
 
-    // Create order and delete cartItem in transaction to ensure data integrity
-    const orders = await this.prismaService.$transaction(async (tx) => {
+      // Pessimistic Lock: Lock the SKUs related by SELECT ... FOR UPDATE
+      const skuIds = cartItems.map((item) => item.skuId)
+      const lockedSkus = await tx.$queryRaw<
+        Array<{ id: number; stock: number }>
+      >`SELECT id, stock FROM "SKU" WHERE id IN (${Prisma.join(skuIds)}) FOR UPDATE`
+
+      console.log(lockedSkus)
+
+      // Create a map to link SKU ID with stock from locked result
+      const skuStockMap = new Map<number, number>()
+      lockedSkus.forEach((sku) => skuStockMap.set(sku.id, sku.stock))
+
+      // Check if the purchase quantity is greater than the stock quantity
+      const isOutOfStock = cartItems.some((item) => {
+        const currentStock = skuStockMap.get(item.skuId) || 0
+        return currentStock < item.quantity
+      })
+      if (isOutOfStock) {
+        throw OutOfStockSKUException
+      }
+
+      // Check if all purchased products have been deleted or unpublished
+      const isExistNotReadyProduct = cartItems.some(
+        (item) =>
+          item.sku.product.deletedAt !== null ||
+          item.sku.product.publishedAt === null ||
+          item.sku.product.publishedAt > new Date()
+      )
+      if (isExistNotReadyProduct) {
+        throw ProductNotFoundException
+      }
+
+      // Check if the skuId in the cartItem sent belongs to the shopId sent
+      const cartItemMap = new Map<number, (typeof cartItems)[number]>()
+      cartItems.forEach((item) => {
+        cartItemMap.set(item.id, item)
+      })
+      const isValidShop = body.every((item) => {
+        const bodyCartItemIds = item.cartItemIds
+        return bodyCartItemIds.every((cartItemId) => {
+          const cartItem = cartItemMap.get(cartItemId)!
+          return item.shopId === cartItem.sku.createdById
+        })
+      })
+      if (!isValidShop) {
+        throw SKUNotBelongToShopException
+      }
+
+      // Create order and delete cartItem in transaction to ensure data integrity
       const payment = await tx.payment.create({
         data: {
           status: PaymentStatus.PENDING
@@ -198,9 +212,9 @@ export class OrderRepo {
         )
       )
 
-      const $addCancelPaymentJob = this.orderProducer.addCancelPaymentJob(payment.id)
+      const [orders] = await Promise.all([$orders, $cartItem, $sku])
 
-      const [orders] = await Promise.all([$orders, $cartItem, $sku, $addCancelPaymentJob])
+      await this.orderProducer.addCancelPaymentJob(payment.id)
 
       return orders
     })

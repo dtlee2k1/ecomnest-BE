@@ -67,7 +67,6 @@ export class AccessTokenGuard implements CanActivate {
     const cacheKey = `role:${roleId}`
 
     let cachedRole = await this.cacheManager.get<CachedRole>(cacheKey)
-    console.log(cachedRole)
     if (!cachedRole) {
       const role = await this.prismaService.role
         .findUniqueOrThrow({
